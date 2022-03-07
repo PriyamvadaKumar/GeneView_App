@@ -71,6 +71,7 @@ server <- function(input, output) {
         { 
           values <- filterByExpr()
           t.test(values ~ er.status)
+          wilcox.test(values ~ er.status, alternative = "two.sided")
         }
       ) #render print ends
       
