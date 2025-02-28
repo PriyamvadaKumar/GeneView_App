@@ -1,9 +1,9 @@
-#
 
+#Load required libraries
 library(shiny)
 library(tidyverse)
-library(ggplot2)
 
+#Define UI
 ui <- fluidPage(
   
 
@@ -29,25 +29,30 @@ ui <- fluidPage(
 )
 
 
-
+#Define server
 server <- function(input, output) {
   
   library(breastCancerVDX)
   library(Biobase)
   library(tools)
   library(edgeR)
+
   
+  #Load Breast cancer dataset
   data(vdx)
   expression.values <- exprs(vdx)
   features <- fData(vdx)
   er.status <- pData(vdx)$er
-  
+
+
+#Define Downloadable Plot Functionality
+
   output$plotPDF <- downloadHandler(
     filename = "boxplot.pdf",
     content = function(file){
       pdf(file)
       
-   
+      # Define Reactive Function to Filter Gene Expression Data
       filterByExpr <- reactive({
         gene <- input$thegene
         probe.id <- as.character(features$probe[match(gene, features$Gene.symbol)])
@@ -55,6 +60,7 @@ server <- function(input, output) {
         expression.values[probe.id,]
       }) 
       
+      #Render the Boxplot
       output$boxplot <- renderPlot({
         
         values <- filterByExpr()
@@ -66,15 +72,16 @@ server <- function(input, output) {
       
       
       
-      
+       #Render Statistical Test Results
       output$testResult <- renderPrint(
         { 
           values <- filterByExpr()
           t.test(values ~ er.status)
           wilcox.test(values ~ er.status, alternative = "two.sided")
         }
-      ) #render print ends
-      
+      ) 
+
+      #Close the PDF Output
       dev.off()
     }
     
