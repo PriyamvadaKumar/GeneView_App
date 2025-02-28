@@ -12,9 +12,9 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       selectInput("thegene","Gene to Analyse",
-                  choices=c("ESR1","ERBB2","PTEN"),
+                  choices=c("BRCA1", "BRCA2", "ATM","ESR1","ERBB2","PTEN"),
                   selected  = "ESR1"),
-      radioButtons("colour","Colour of histogram",choices=c("orange","green","blue"),selected = "orange"),
+      radioButtons("colour","Colour of histogram",choices=c("orange","green","blue","pink", "yellow","red"),selected = "blue"),
       downloadButton("plotPDF",label = "Download"),
       a("dataset source", href="10.18129/B9.bioc.breastCancerVDX") ,
       
