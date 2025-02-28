@@ -7,7 +7,7 @@ library(tidyverse)
 ui <- fluidPage(
   
 
-  titlePanel("Analyzing VDX breast cancer dataset"),
+  titlePanel("GeneGlance: Analyzing VDX breast cancer dataset"),
   
   sidebarLayout(
     sidebarPanel(
