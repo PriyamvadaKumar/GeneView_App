@@ -1,7 +1,9 @@
 # GeneGlance: An RShiny/Tidyverse App
  
 •	Developed an interactive RShiny web application to analyze Affy microarray breast cancer gene expression (ESR1, ERBB2, PTEN genes) from the VDX datasets, integrating Tidyverse, Biobase, and edgeR for statistical analysis (22283 features X 344 samples from Bioconductor)
+
 •	Implemented real-time differential expression analysis using Student’s t-test and Wilcoxon test, enabling users to compare gene expression across ER-positive and ER-negative tumors with downloadable visualizations
+
 •	Designed a dynamic UI with selectable gene inputs, customizable histogram colors, and interactive boxplots, improving accessibility for researchers without coding expertise
 
 
