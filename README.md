@@ -1,6 +1,6 @@
 # GeneView App
 
-•	Built GeneView, an interactive Shiny app for analyzing the Affy microarray breast cancer gene expression (VDX dataset; 22,283 features, 344 samples), leveraging Tidyverse and ggplot2 for rich statistical visualizations of key genes (e.g., ESR1, ERBB2, PTEN, BRCA1, BRCA2, ATM)
+•	Built GeneView, an interactive Shiny app for analyzing Affy microarray breast cancer gene expression (VDX dataset; 22,283 features, 344 samples), leveraging Tidyverse and ggplot2 for rich statistical visualizations of key genes (e.g., ESR1, ERBB2, PTEN, BRCA1, BRCA2, ATM)
 
 •	Integrated Shapiro-Wilk, Student’s t-test, and Wilcoxon rank-sum tests to assess gene expression patterns based on estrogen receptor (ER) status
 
