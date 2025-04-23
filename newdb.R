@@ -7,6 +7,7 @@ library(clusterProfiler)
 library(org.Hs.eg.db)
 library(stringr)
 library(corrplot)
+library(Rtsne)
 
 
 # Load dataset
@@ -27,12 +28,15 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       fileInput("geneFile", "Upload Custom Gene List (CSV or TXT)", accept = c(".csv", ".txt"), placeholder = "One gene symbol per line or in first column"),
-      selectizeInput("genes", "Select Genes:", multiple = TRUE, choices = c("ESR1", "ERBB2", "PTEN", "BRCA1", "BRCA2", "ATM")),
+      selectizeInput("genes", "Select Genes:", multiple = TRUE, choices = c("ESR1", "ERBB2", "PTEN", "BRCA1", "BRCA2", "ATM", "AAAS", "A4GNT", "AADAC", "AAK1")),
       colourInput("color_ER0", "Boxplot Color for ER- (0):", value = "green"),
       colourInput("color_ER1", "Boxplot Color for ER+ (1):", value = "blue"),
+      colourInput("cluster_color", "Select cluster Color", value = "#2c7fb8"),
       checkboxInput("toggle_pdata", "Preview of Breast Cancer VDX Dataset", value = FALSE),
+      radioButtons("dimred_method", "Select Dimensionality Reduction Method:",
+                   choices = c("PCA", "t-SNE"), selected = "PCA"),
+      actionButton("run_dimred", "Run Dimensionality Reduction"),
       downloadButton("downloadResults", "Download All Results")
-      
     ),
     
     mainPanel(
@@ -43,6 +47,9 @@ ui <- fluidPage(
         column(6,tableOutput("erTable"))),
       
       conditionalPanel(condition = "input.toggle_pdata == true", verbatimTextOutput("head_pdata")),
+      
+      h3("Plot output for PCA/t-SNE"),
+      plotOutput("dimred_plot"),
       
       h3("Correlation Plot of Selected Genes"),
       plotOutput("corPlot"),
@@ -122,7 +129,7 @@ server <- function(input, output, session) {
   
   # Function to filter expression values based on user-selected genes with validation
   filterByExpr <- reactive({
-    req(input$genes)  # Ensures user has selected atleast 1 gene
+    req(input$genes)# Ensures user has selected atleast 1 gene
     input_genes <- input$genes #Grabs the current gene list from user input (via selectize or File input)
     
     # Validate that input genes exist in the dataset-split into valid and invalid genes
@@ -149,6 +156,67 @@ server <- function(input, output, session) {
     data.frame(ER_Status = names(er_counts), Count = as.vector(er_counts))
   })
   
+  ### run dimensionality reduction with a minimun of 10 genes
+  
+  # Define exprs_selected as a reactive expression
+  exprs_selected <- reactive({
+    req(filterByExpr())  # Ensure expression data is available
+    return(filterByExpr())  # Return the filtered expression data
+  })
+  
+  dimred_data <- eventReactive(input$run_dimred, {
+    req(exprs_selected())
+    
+    # Require at least 10 genes
+    validate(
+      need(nrow(exprs_selected()) >= 10, "Please select at least 10 genes for clustering.")
+    )
+    
+    #scale the expression data 
+    exprs_scaled <- t(scale(t(exprs_selected())))
+    n_samples <- ncol(exprs_scaled)
+    
+    if (input$dimred_method == "PCA") {
+      pca <- prcomp(exprs_scaled, scale. = TRUE)
+      df <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2],
+                       Sample = rownames(pca$x))
+      list(data = df, method = "PCA")
+    } else {
+      
+      perplexity_val <- min(30, floor((n_samples - 1) / 3))
+      
+      if (perplexity_val < 1) {
+        stop("Not enough samples to perform t-SNE. Please select more genes.")
+      }
+      tsne <- Rtsne(t(exprs_scaled), dims = 2, perplexity = perplexity_val, verbose = TRUE)
+      df <- data.frame(Dim1 = tsne$Y[, 1], Dim2 = tsne$Y[, 2],
+                       Sample = rownames(t(exprs_scaled)))
+      list(data = df, method = "t-SNE")
+    }
+  })
+  
+  
+  # Render clustering plot
+  output$dimred_plot <- renderPlot({
+    req(dimred_data())
+    df <- dimred_data()$data
+    method <- dimred_data()$method
+    color3 <- input$cluster_color
+    ggplot(df, aes_string(x = names(df)[1], y = names(df)[2])) +
+      geom_point(color = color3, size = 3) +
+      theme_minimal(base_size = 14) +
+      labs(title = paste(method, "Sample Clustering"))
+  })
+  
+  # Render heatmap
+  output$heatmap_plot <- renderPlot({
+    req(exprs_selected())
+    pheatmap::pheatmap(exprs_selected(),
+                       cluster_rows = TRUE, cluster_cols = TRUE,
+                       show_colnames = FALSE, fontsize_row = 6)
+  })
+  
+
   # correlation plot 
   
   output$corPlot <- renderPlot({
@@ -194,7 +262,7 @@ server <- function(input, output, session) {
                            lab_size = 3)
   })
   
-  
+
   
   
   # Box plot
@@ -326,6 +394,8 @@ server <- function(input, output, session) {
     barplot(ego, showCategory = 10, title = "Top 10 GO Terms")
   })
   
+  
+  ## Download Results 
   ##### Download Handler
   output$downloadResults <- downloadHandler(
     filename = function() {
@@ -486,7 +556,7 @@ server <- function(input, output, session) {
       write.csv(go_results_df, go_csv, row.names = FALSE)
       print(paste("Saving GO results to:", go_csv))
       
-      # Step 4: Plot the GO Enrichment Barplot (Check data before plotting)
+      # Step 3: Plot the GO Enrichment Barplot (Check data before plotting)
       if (nrow(go_results_df) > 0) {
         go_plot_file <- file.path(temp_dir, "go_enrichment_plot.png")
         png(go_plot_file)
@@ -498,6 +568,26 @@ server <- function(input, output, session) {
         print("No GO terms to plot. Skipping barplot.")
       }
       
+      # Step 4 Get clsuter plots and heatmaps
+ 
+       # Sample clustering plot (PCA/t-SNE)
+       clustering_plot_path <- file.path(temp_dir, paste0("Sample_Clustering", ".png"))
+       png(clustering_plot_path, width = 7, height = 5)
+       print(ggplot(dimred_data()$data, aes_string(x = names(dimred_data()$data)[1],
+                                                   y = names(dimred_data()$data)[2])) +
+               geom_point(color = input$color, size = 3) +
+               theme_minimal(base_size = 14) +
+               labs(title = paste(dimred_data()$method, "Sample Clustering")))
+       dev.off()
+       
+       # Heatmap plot
+       heatmap_path <- file.path(temp_dir, "Gene_Expression_Heatmap.pdf")
+       pdf(heatmap_path, width = 8, height = 10)
+       pheatmap::pheatmap(exprs_selected(),
+                          cluster_rows = TRUE, cluster_cols = TRUE,
+                          show_colnames = FALSE, fontsize_row = 6)
+       dev.off()
+ 
       
       # Step 5: Create Correlation Plot for Selected Genes
       selected_genes <- trimws(selected_genes)  # Remove leading/trailing spaces
@@ -522,8 +612,10 @@ server <- function(input, output, session) {
       available_genes <- selected_genes_clean[selected_genes_clean %in% rownames(expression.values)]
       missing_genes <- selected_genes_clean[!(selected_genes_clean %in% rownames(expression.values))]
       
-      print("Missing genes:")
-      print(missing_genes)
+      if(length(missing_genes) > 0) {
+        writeLines(paste("Missing genes:", paste(missing_genes, collapse = ", ")), readme_file)
+      }
+      
 
       print("Checking which genes are available in rownames(vdx):")
       print(available_genes)
@@ -546,11 +638,7 @@ server <- function(input, output, session) {
       
       
       
-      # Step 5: Create Boxplot for Selected Genes by ER Status
-      
-      # Clean selected genes
-      selected_genes_clean <- gsub("\"", "", selected_genes)
-      selected_genes_clean <- trimws(selected_genes)
+      # Step 6: Create Boxplot for Selected Genes by ER Status
       
       # Print cleaned list
       print("Selected genes (cleaned):")
@@ -632,7 +720,7 @@ server <- function(input, output, session) {
       statistical_results <- do.call(rbind, results)
       write.csv(statistical_results, file.path(temp_dir, "statistical_test_results.csv"), row.names = FALSE)
       
-      # Step 4: Create boxplot if >= 2 valid genes
+      # Step 7: Create boxplot if >= 2 valid genes
       if (length(available_genes) >= 2) {
         expression_subset <- expression.values[available_genes, , drop = FALSE]
         
@@ -672,7 +760,7 @@ server <- function(input, output, session) {
         cat("Not enough valid genes for boxplot (need at least 2). Skipping plot.\n")
       }
       
-      # Step 6: Prepare the README File
+      # Step 8: Prepare the README File
       
       readme_text <- "
 ## GeneView: Gene Expression Analysis in Breast Cancer
@@ -684,7 +772,7 @@ To download the statistical test results and related files, open the app in **br
 
 #### Tips on Gene Selection 
 
-For optimal results when using this app, we recommend selecting:3 to 10 genes. Once selected, wait for a few seconds for the results to render.
+For optimal results when using this app, we recommend selecting: >= 10 genes. Once selected, wait for a few seconds for the results to render.
 
 #### Why this range?
 Biological relevance: A focused subset of genes (e.g., ESR1, BRCA1, PGR, GATA3) helps interpret key pathways in estrogen receptor signaling.
@@ -725,11 +813,16 @@ App performance: Keeps rendering fast and responsive in interactive sessions.
    - A barplot of the top 10 GO terms enriched in your gene set.
 
 4. **correlation_plot.png**:
-   - Correlation plot showing the relationships between the selected genes.Choose atleast 3 genes
+   - Correlation plot showing the relationships between the selected genes.
 
 5. **boxplot.png**:
    - Boxplot comparing gene expression levels between ER+ and ER- groups for selected genes.
-
+   
+6. **Gene_Expression_Heatmap.pdf**:
+   - A heatmap of gene expression across samples for the selected genes.
+7. **Sample_Clustering.png**:
+   - A plot showing hierarchical clustering of samples based on gene expression.
+   
 #### Statistical Test Notes:
 - **Test Selection**: A Shapiro-Wilk test is performed on the gene expression values. If both groups (ER+ and ER-) pass normality (p > 0.05), a t-test is used. If either group fails normality, a Wilcoxon rank-sum test is applied.
 - **P-Value Selection**: A p-value < 0.05 indicates a statistically significant difference between the two groups.
@@ -750,6 +843,8 @@ Thank you for using GeneView! For questions, contact: pk563@snu.edu.in
         "go_enrichment_plot.png",
         "correlation_plot.png",
         "boxplot.png",
+        "Gene_Expression_Heatmap.pdf",
+        "Sample_Clustering.png",
         "README.txt"
       )
       
